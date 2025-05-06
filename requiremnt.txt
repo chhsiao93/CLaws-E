@@ -1,0 +1,6 @@
+taichi
+torch
+torchvision
+torchaudio
+matplotlib
+pandas
