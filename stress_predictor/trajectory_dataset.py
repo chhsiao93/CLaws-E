@@ -14,6 +14,7 @@ class StressPredictionDataset(Dataset):
 
         self.inputs = []
         self.targets = []
+        # self.rotations = []
 
         # Load metadata
         with open(metadata_path, 'r') as f:
@@ -23,13 +24,13 @@ class StressPredictionDataset(Dataset):
         # Load normalization stats
         self.vel_mean = np.array(stats['mean_velocity'])
         self.vel_std = np.array(stats['std_velocity'])
-        self.stress_mean = np.array(stats['mean_stress'])[ [0, 1, 3] ]
-        self.stress_std = np.array(stats['std_stress'])[ [0, 1, 3] ]
+        self.stress_mean = np.array(stats['mean_stress'])#[ [0, 1, 3] ]
+        self.stress_std = np.array(stats['std_stress'])#[ [0, 1, 3] ]
 
         # Temp storage
         all_inputs = []
         all_targets = []
-
+        # all_rotations = []
         # Load npz data
         data = np.load(npz_path, allow_pickle=True)
         for key in data.files:
@@ -42,22 +43,41 @@ class StressPredictionDataset(Dataset):
             velocity[:-1] = positions[1:] - positions[:-1]
 
             velocity = (velocity - self.vel_mean) / self.vel_std
-            stress = extract_symmetric_components(stress)
+            # stress = extract_symmetric_components(stress)
             stress = (stress - self.stress_mean) / self.stress_std
             next_stress = stress[1:]
 
-            for t in range(positions.shape[0] - 1):
-                v = velocity[t]
-                s = stress[t]
-                f = F[t]
-                x = np.concatenate([v, s, f], axis=-1)
-                y = next_stress[t]
+        for t in range(positions.shape[0] - 1):
+            # v = velocity[t]
+            # s = stress[t]
+            # f = F[t]
+            # x = np.concatenate([v, s, f], axis=-1)
+            # y = next_stress[t]
+            f = F[t]  # shape (N, 4)
+            # f_matrix = f.reshape(-1, 2, 2)
 
-                all_inputs.append(x)
-                all_targets.append(y)
+            # # SVD
+            # u, svals, vh = np.linalg.svd(f_matrix)
+            # r = np.matmul(u, vh)  # N x 2 x 2
+
+            # # Compute C
+            # c = np.einsum('nij,njk->nik', f_matrix.transpose(0, 2, 1), f_matrix)  # N x 2 x 2
+            # c_flat = c.reshape(-1, 4)
+
+            # # det(F)
+            # det_f = np.linalg.det(f_matrix)
+
+            # # Input x: [C11, C12, C21, C22, σ1, σ2, detF]
+            # x = np.concatenate([c_flat, svals, det_f[:, None]], axis=-1)  # N x 7
+            x = np.concatenate([f])
+
+            all_inputs.append(x)
+            all_targets.append(next_stress[t])
+            # all_rotations.append(r)
 
         all_inputs = np.concatenate(all_inputs, axis=0)
         all_targets = np.concatenate(all_targets, axis=0)
+        # all_rotations = np.concatenate(all_rotations, axis=0)
 
         if downsample:
             target_magnitudes = np.linalg.norm(all_targets, axis=-1)
@@ -77,6 +97,7 @@ class StressPredictionDataset(Dataset):
 
         self.inputs = torch.tensor(all_inputs, dtype=torch.float32)
         self.targets = torch.tensor(all_targets, dtype=torch.float32)
+        # self.rotations = torch.tensor(all_rotations, dtype=torch.float32)
 
     def __len__(self):
         return self.inputs.shape[0]

@@ -8,15 +8,16 @@ from tqdm import tqdm
 import json
 
 # Config
-npz_path = "/Users/clawsy/Documents/GitHub/CLaws-E/taichi_mpm/data/sand45/train/train.npz"
-metadata_path = "/Users/clawsy/Documents/GitHub/CLaws-E/taichi_mpm/data/sand45/train/metadata.json"
+npz_path = "data/train.npz"
+metadata_path = "data/metadata.json"
 model_path = "models/"
-batch_size = 1024
-epochs = 1000
+batch_size = 2048
+epochs = 10000
+verbose_step = 100
 lr = 1e-3
 
 # Load dataset and prepare dataloader
-dataset = StressPredictionDataset(npz_path=npz_path, metadata_path=metadata_path)
+dataset = StressPredictionDataset(npz_path=npz_path, metadata_path=metadata_path, downsample=True)
 dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 
@@ -25,7 +26,7 @@ input_dim = dataset[0][0].shape[0]
 output_dim = dataset[0][1].shape[0]
 
 # Initialize model
-model = MLPStressPredictor(input_dim=input_dim, output_dim=output_dim)
+model = MLPStressPredictor()
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
@@ -41,12 +42,14 @@ print(f"  Number of epochs        : {epochs}")
 print()
 
 # Optimizer & Loss
-optimizer = optim.Adam(model.parameters(), lr=lr)
+optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2e3, gamma=0.9)
 loss_fn = nn.MSELoss()
 
 loss_history = []
 for epoch in range(epochs):
     model.train()
+    
     total_loss = 0
 
     # Wrap your dataloader with tqdm for progress bar
@@ -54,8 +57,13 @@ for epoch in range(epochs):
 
     for x, y in progress_bar:
         x, y = x.to(device), y.to(device)
-        pred = model(x)
-        loss = loss_fn(pred, y)
+        pred = model(x)  # pred shape: (N, 2, 2)
+        y = y.view(-1, 2, 2)
+        loss = loss_fn(pred, y)    
+    
+        # x, y = x.to(device), y.to(device)
+        # pred = model(x)
+        # loss = loss_fn(pred, y)
 
         optimizer.zero_grad()
         loss.backward()
@@ -65,10 +73,13 @@ for epoch in range(epochs):
 
         # Update progress bar with current loss
         progress_bar.set_postfix(loss=loss.item())
+        
+    scheduler.step()
 
     avg_loss = total_loss / len(dataset)
     loss_history.append(avg_loss)
-    print(f"Epoch {epoch+1}/{epochs} | Avg Loss: {avg_loss:.6f}")
+    if epoch % verbose_step == 0:
+        print(f"Epoch {epoch+1}/{epochs}\t| Avg Loss: {avg_loss:.4f} | Learning Rate: {scheduler.get_last_lr()[0]:.4e}")
 
 # Save model weights and metadata
 torch.save({

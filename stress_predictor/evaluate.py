@@ -7,10 +7,11 @@ import matplotlib.pyplot as plt
 import json
 
 # Config
-npz_path = "/Users/clawsy/Documents/GitHub/CLaws-E/taichi_mpm/data/sand45/train/train.npz"
-metadata_path = "/Users/clawsy/Documents/GitHub/CLaws-E/taichi_mpm/data/sand45/train/metadata.json"
+npz_path = "data/train.npz"
+metadata_path = "data/metadata.json"
 output_path = "results/"
 model_path = "models/"
+denormalize = False
 
 def reconstruct_tensor(sym):
     # sym: (N, 3) => [xx, xy, yy]
@@ -26,9 +27,10 @@ def reconstruct_tensor(sym):
 # === Load metadata for denormalization ===
 with open(metadata_path, 'r') as f:
     stats = json.load(f)['train']
-stress_mean = torch.tensor(np.array(stats['mean_stress'])[ [0, 1, 3] ]).reshape(1, 3)
-stress_std = torch.tensor(np.array(stats['std_stress'])[ [0, 1, 3] ]).reshape(1, 3)
-
+stress_mean = torch.tensor(np.array(stats['mean_stress'])).reshape(1, 4)
+stress_std = torch.tensor(np.array(stats['std_stress'])).reshape(1, 4)
+# stress_mean = torch.tensor(np.array(stats['mean_stress'])[ [0, 1, 3] ]).reshape(1, 3)
+# stress_std = torch.tensor(np.array(stats['std_stress'])[ [0, 1, 3] ]).reshape(1, 3)
 # === Load dataset ===
 dataset = StressPredictionDataset(npz_path=npz_path, metadata_path=metadata_path, downsample=False)
 loader = DataLoader(dataset, batch_size=8192, shuffle=False)
@@ -36,7 +38,7 @@ loader = DataLoader(dataset, batch_size=8192, shuffle=False)
 # === Load model ===
 checkpoint = torch.load(f'{model_path}/trained_model.pth')
 loss_history = checkpoint['loss_history']
-model = MLPStressPredictor(input_dim=checkpoint['input_dim'], output_dim=checkpoint['output_dim'])
+model = MLPStressPredictor()
 model.load_state_dict(checkpoint['model_state_dict'])
 model.eval()
 
@@ -46,20 +48,24 @@ all_targets = []
 
 with torch.no_grad():
     for x, y in loader:
-        pred = model(x)
+        pred = model(x).view(-1, 4)
         all_preds.append(pred)
         all_targets.append(y)
 
-preds = torch.cat(all_preds, dim=0)      # (N, 3)
-targets = torch.cat(all_targets, dim=0)  # (N, 3)
+preds = torch.cat(all_preds, dim=0)      # (N, 4)
+targets = torch.cat(all_targets, dim=0)  # (N, 4)
 
 # === Denormalize ===
-preds = preds * stress_std + stress_mean
-targets = targets * stress_std + stress_mean
+if denormalize:
+    preds = preds * stress_std + stress_mean
+    targets = targets * stress_std + stress_mean
+
 
 # === Reconstruct full tensors ===
-preds_tensor = reconstruct_tensor(preds)      # (N, 2, 2)
-targets_tensor = reconstruct_tensor(targets)  # (N, 2, 2)
+# preds_tensor = reconstruct_tensor(preds)      # (N, 2, 2)
+# targets_tensor = reconstruct_tensor(targets)  # (N, 2, 2)
+preds_tensor = preds.view(-1, 2, 2)      # (N, 2, 2)
+targets_tensor = targets.view(-1, 2, 2)  # (N, 2, 2)
 
 # === Compute absolute error ===
 errors = torch.abs(preds_tensor - targets_tensor)  # (N, 2, 2)
