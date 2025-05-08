@@ -11,13 +11,15 @@ import json
 npz_path = "data/train.npz"
 metadata_path = "data/metadata.json"
 model_path = "models/"
-batch_size = 2048
-epochs = 1000
-verbose_step = 100
+batch_size = 8096
+epochs = 50
+verbose_step = 1
 lr = 1e-3
+scheduler_step = 10
+scheduler_step_gamma = 0.9
 
 # Load dataset and prepare dataloader
-dataset = StressPredictionDataset(npz_path=npz_path, metadata_path=metadata_path, downsample=True)
+dataset = StressPredictionDataset(npz_path=npz_path, metadata_path=metadata_path, downsample=False)
 dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 
@@ -42,7 +44,7 @@ print()
 
 # Optimizer & Loss
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2e3, gamma=0.9)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_step_gamma)
 loss_fn = nn.MSELoss()
 
 loss_history = []

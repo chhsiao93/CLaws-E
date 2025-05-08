@@ -4,13 +4,8 @@ from torch.utils.data import Dataset
 import json
 
 class StressPredictionDataset(Dataset):
-    def __init__(self, npz_path, metadata_path, downsample=True, max_samples_per_bin=10000, n_bins=10):
-        def extract_symmetric_components(stress):
-            sigma_xx = stress[..., 0]
-            sigma_xy = stress[..., 1]
-            sigma_yx = stress[..., 2]
-            sigma_yy = stress[..., 3]
-            return np.stack([sigma_xx, 0.5 * (sigma_xy + sigma_yx), sigma_yy], axis=-1)
+    def __init__(self, npz_path, metadata_path, downsample=True, max_samples_per_bin=10000, n_bins=10, identity_data=False):
+
 
         self.inputs = []
         self.targets = []
@@ -36,43 +31,24 @@ class StressPredictionDataset(Dataset):
         for key in data.files:
             traj = data[key].item()
             positions = traj['positions']
-            stress = traj['stress']
-            F = traj['deformation_gradient']
+            stress = traj['stress'] # stress tensor at the end of p2g
+            F = traj['deformation_gradient'] # deformation gradient in the beginning of the timestep
 
-            velocity = np.zeros_like(positions)
-            velocity[:-1] = positions[1:] - positions[:-1]
+            # velocity = np.zeros_like(positions)
+            # velocity[:-1] = positions[1:] - positions[:-1]
 
-            velocity = (velocity - self.vel_mean) / self.vel_std
+            # velocity = (velocity - self.vel_mean) / self.vel_std
             # stress = extract_symmetric_components(stress)
             stress = (stress - self.stress_mean) / self.stress_std
-            next_stress = stress[1:]
+            next_stress = stress # next stress is the stress at the end of the p2g step
 
-        for t in range(positions.shape[0] - 1):
-            # v = velocity[t]
-            # s = stress[t]
-            # f = F[t]
-            # x = np.concatenate([v, s, f], axis=-1)
-            # y = next_stress[t]
-            f = F[t]  # shape (N, 4)
-            # f_matrix = f.reshape(-1, 2, 2)
+            for t in range(positions.shape[0]):
 
-            # # SVD
-            # u, svals, vh = np.linalg.svd(f_matrix)
-            # r = np.matmul(u, vh)  # N x 2 x 2
+                f = F[t]  # shape (N, 4)
+                x = np.concatenate([f])
 
-            # # Compute C
-            # c = np.einsum('nij,njk->nik', f_matrix.transpose(0, 2, 1), f_matrix)  # N x 2 x 2
-            # c_flat = c.reshape(-1, 4)
-
-            # # det(F)
-            # det_f = np.linalg.det(f_matrix)
-
-            # # Input x: [C11, C12, C21, C22, σ1, σ2, detF]
-            # x = np.concatenate([c_flat, svals, det_f[:, None]], axis=-1)  # N x 7
-            x = np.concatenate([f])
-
-            all_inputs.append(x)
-            all_targets.append(next_stress[t])
+                all_inputs.append(x)
+                all_targets.append(next_stress[t])
             # all_rotations.append(r)
 
         all_inputs = np.concatenate(all_inputs, axis=0)

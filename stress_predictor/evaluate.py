@@ -51,6 +51,7 @@ denorm_targets = targets * stress_std + stress_mean
 # === Compute absolute error ===
 errors = torch.abs(preds - targets).view(-1, 2, 2)  # (N, 2, 2)
 denorm_errors = torch.abs(denorm_preds - denorm_targets).view(-1, 2, 2)  # (N, 2, 2)
+rel_errors = torch.abs((preds - targets) / targets).view(-1, 2, 2)  # (N, 2, 2)
 
 # === Plot histograms ===
 labels = ['xx', 'xy', 'yx', 'yy']
@@ -76,6 +77,16 @@ for i in range(2):
 
 plt.tight_layout()
 plt.savefig(f'{output_path}/stress_error_histograms_denormalized.png')
+# Plot relative error histograms
+fig, axs = plt.subplots(2, 2, figsize=(8, 6))
+for i in range(2):
+    for j in range(2):
+        axs[i, j].hist(rel_errors[:, i, j].numpy(), bins=100, alpha=0.7, log=True)
+        axs[i, j].set_title(f"Error Histogram: σ_{labels[i*2 + j]}")
+        axs[i, j].set_xlabel('Relative Error')
+        axs[i, j].set_ylabel('Frequency')
+plt.tight_layout()
+plt.savefig(f'{output_path}/stress_error_histograms_relative.png')
 
 # === Plot loss curve ===
 fig, ax = plt.subplots(figsize=(8, 4))
